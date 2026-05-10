@@ -1,0 +1,249 @@
+
+<h2 class="sr-only">Интерактивный демо-монитор сейсмического датчика — нажмите на экран чтобы симулировать землетрясение</h2>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+#wrap{background:#0d0d10;border-radius:var(--border-radius-lg);overflow:hidden;cursor:pointer;user-select:none;}
+#topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:#131316;border-bottom:1px solid #1e1e24;}
+.tb-left{display:flex;align-items:center;gap:10px;}
+.tb-logo{font-size:13px;font-weight:500;color:#e2e2e6;letter-spacing:0.02em;}
+.tb-sub{font-size:11px;color:#555560;}
+.tb-right{display:flex;align-items:center;gap:12px;}
+.tb-time{font-size:12px;color:#555560;font-variant-numeric:tabular-nums;}
+#statusPill{font-size:11px;font-weight:500;padding:3px 10px;border-radius:99px;border:1px solid;transition:all 0.3s;}
+.pill-ok{background:rgba(29,158,117,0.12);color:#5DCAA5;border-color:#0F6E56;}
+.pill-danger{background:rgba(226,75,74,0.15);color:#F09595;border-color:#A32D2D;animation:pillFlash 0.6s infinite;}
+@keyframes pillFlash{0%,100%{opacity:1}50%{opacity:0.5}}
+#mainArea{display:grid;grid-template-columns:1fr 200px;min-height:320px;}
+#chartZone{padding:14px 16px;display:flex;flex-direction:column;gap:10px;border-right:1px solid #1e1e24;}
+.ch-header{display:flex;align-items:center;justify-content:space-between;}
+.ch-title{font-size:11px;color:#555560;text-transform:uppercase;letter-spacing:0.07em;}
+.ch-legend{display:flex;gap:10px;}
+.leg{display:flex;align-items:center;gap:4px;font-size:10px;color:#555560;}
+.leg-dot{width:6px;height:6px;border-radius:50%;}
+canvas{display:block;width:100%;border-radius:4px;}
+#sidebar{padding:14px 14px;display:flex;flex-direction:column;gap:10px;}
+.metric{background:#131316;border:1px solid #1e1e24;border-radius:6px;padding:10px 12px;}
+.m-label{font-size:10px;color:#555560;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;}
+.m-val{font-size:20px;font-weight:500;font-variant-numeric:tabular-nums;line-height:1;}
+.m-unit{font-size:10px;color:#555560;margin-top:2px;}
+.m-vib .m-val{color:#5DCAA5;}
+.m-act .m-val{color:#85B7EB;}
+.m-alerts .m-val{color:#F09595;}
+#alertBox{display:none;margin:0 16px 14px;padding:10px 14px;border-radius:6px;font-size:12px;font-weight:500;border:1px solid;align-items:center;gap:8px;}
+#alertBox.show{display:flex;}
+#alertBox.warn{background:rgba(239,159,39,0.1);color:#FAC775;border-color:#854F0B;}
+#alertBox.crit{background:rgba(226,75,74,0.1);color:#F09595;border-color:#A32D2D;animation:shake 0.4s;}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+#footer{padding:8px 16px;background:#131316;border-top:1px solid #1e1e24;display:flex;align-items:center;justify-content:space-between;}
+.ft-text{font-size:10px;color:#333340;}
+#clickHint{font-size:10px;color:#333340;transition:color 0.3s;}
+#clickHint.active{color:#F09595;}
+#stopBtn{display:none;font-size:11px;color:#F09595;background:rgba(226,75,74,0.12);border:1px solid #A32D2D;border-radius:4px;padding:3px 10px;cursor:pointer;}
+#stopBtn.show{display:block;}
+</style>
+
+<div id="wrap">
+  <div id="topbar">
+    <div class="tb-left">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5DCAA5" stroke-width="2" stroke-linecap="round"><polyline points="2 12 6 4 10 18 14 6 18 16 22 12"/></svg>
+      <div>
+        <div class="tb-logo">СейсмоМонитор v2.1</div>
+        <div class="tb-sub">MPU6050 · COM3 · 115200 baud</div>
+      </div>
+    </div>
+    <div class="tb-right">
+      <span class="tb-time" id="clock">--:--:--</span>
+      <div id="statusPill" class="pill-ok">● Норма</div>
+    </div>
+  </div>
+
+  <div id="mainArea">
+    <div id="chartZone">
+      <div class="ch-header">
+        <span class="ch-title">Форма волны — реальное время</span>
+        <div class="ch-legend">
+          <div class="leg"><div class="leg-dot" style="background:#1D9E75"></div>Вибрация</div>
+          <div class="leg"><div class="leg-dot" style="background:#378ADD"></div>Активность</div>
+          <div class="leg"><div class="leg-dot" style="background:#EF9F27;border-radius:1px;height:2px;width:10px"></div>Порог 3.0</div>
+        </div>
+      </div>
+      <canvas id="cv" height="200"></canvas>
+    </div>
+    <div id="sidebar">
+      <div class="metric m-vib">
+        <div class="m-label">Вибрация</div>
+        <div class="m-val" id="mV">0.00</div>
+        <div class="m-unit">м/с²</div>
+      </div>
+      <div class="metric m-act">
+        <div class="m-label">Активность</div>
+        <div class="m-val" id="mA">0.00</div>
+        <div class="m-unit">общая</div>
+      </div>
+      <div class="metric m-alerts">
+        <div class="m-label">Оповещений</div>
+        <div class="m-val" id="mAl">0</div>
+        <div class="m-unit">за сессию</div>
+      </div>
+      <div class="metric">
+        <div class="m-label">Макс. пик</div>
+        <div class="m-val" id="mPk" style="color:#EF9F27;">0.00</div>
+        <div class="m-unit">м/с²</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="alertBox">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    <span id="alertMsg"></span>
+  </div>
+
+  <div id="footer">
+    <span class="ft-text">Нажмите на экран для активации / деактивации колебаний</span>
+    <span id="clickHint">нажми куда угодно</span>
+    <button id="stopBtn" onclick="event.stopPropagation();toggleQuake()">■ Остановить</button>
+  </div>
+</div>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const N = 120;
+let bV = new Array(N).fill(0);
+let bA = new Array(N).fill(0);
+let quake = false;
+let alertCount = 0;
+let peak = 0;
+let alertTO = null;
+let t = 0;
+let quakeT = 0;
+let quakeIntensity = 0;
+
+function resize() {
+  cv.width = cv.parentElement.clientWidth - 32;
+}
+resize();
+
+function setStatus(s) {
+  const p = document.getElementById('statusPill');
+  if(s === 'danger') { p.className = 'pill-danger'; p.textContent = '● ОПАСНОСТЬ'; }
+  else if(s === 'warning') { p.className = 'pill-danger'; p.textContent = '● Предупреждение'; p.style.color='#FAC775'; p.style.borderColor='#854F0B'; p.style.background='rgba(239,159,39,0.12)'; }
+  else { p.className = 'pill-ok'; p.textContent = '● Норма'; p.style.color=''; p.style.borderColor=''; p.style.background=''; }
+}
+
+function showAlert(val, level) {
+  const box = document.getElementById('alertBox');
+  box.className = 'show ' + (level === 'danger' ? 'crit' : 'warn');
+  document.getElementById('alertMsg').textContent = (level==='danger'?'КРИТИЧНО — ':'Предупреждение — ') + 'активность ' + val.toFixed(2);
+  clearTimeout(alertTO);
+  if(!quake) alertTO = setTimeout(()=>{ box.className=''; }, 4000);
+}
+
+function tick() {
+  t += 0.1;
+  let vib, rot, act;
+
+  if(quake) {
+    quakeT += 0.1;
+    quakeIntensity = Math.min(quakeIntensity + 0.08, 1);
+    const base = 9.81 + Math.sin(quakeT * 3.7) * 4 * quakeIntensity;
+    const noise = (Math.random() - 0.5) * 8 * quakeIntensity;
+    const spike = Math.random() < 0.08 ? Math.random() * 20 * quakeIntensity : 0;
+    vib = Math.abs(base - 9.81 + noise + spike);
+    rot = Math.abs(Math.sin(quakeT * 2.1) * 0.6 * quakeIntensity + (Math.random()-0.5)*0.3);
+    act = vib + rot * 5;
+  } else {
+    quakeIntensity = Math.max(quakeIntensity - 0.05, 0);
+    if(quakeIntensity > 0) {
+      vib = Math.abs((Math.random()-0.5)*2*quakeIntensity + Math.sin(t*2)*0.5*quakeIntensity);
+      rot = Math.abs((Math.random()-0.5)*0.1*quakeIntensity);
+      act = vib + rot*5;
+    } else {
+      vib = Math.abs((Math.random()-0.5)*0.15 + Math.sin(t*0.3)*0.05);
+      rot = Math.abs((Math.random()-0.5)*0.01);
+      act = vib + rot*5;
+    }
+  }
+
+  bV.push(vib); bV.shift();
+  bA.push(act); bA.shift();
+
+  document.getElementById('mV').textContent = vib.toFixed(2);
+  document.getElementById('mA').textContent = act.toFixed(2);
+  if(act > peak) { peak = act; document.getElementById('mPk').textContent = act.toFixed(2); }
+
+  const thr = 3.0;
+  if(act >= thr * 1.5) {
+    setStatus('danger');
+    if(quake) { alertCount++; document.getElementById('mAl').textContent = alertCount; showAlert(act,'danger'); }
+  } else if(act >= thr) {
+    setStatus('warning');
+    if(quake) { alertCount++; document.getElementById('mAl').textContent = alertCount; showAlert(act,'warn'); }
+  } else {
+    setStatus('ok');
+  }
+}
+
+function draw() {
+  const W = cv.width, H = cv.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = '#0d0d10';
+  ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle='rgba(255,255,255,0.04)'; ctx.lineWidth=0.5;
+  for(let i=1;i<4;i++){const y=H/4*i;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+
+  const maxVal = Math.max(...bA, 6);
+  const sc = (H-8)/maxVal;
+  const tY = H - 3.0*sc;
+  if(tY>0&&tY<H){
+    ctx.strokeStyle='#854F0B'; ctx.lineWidth=1; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(0,tY); ctx.lineTo(W,tY); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  function drawLine(buf, color) {
+    ctx.strokeStyle=color; ctx.lineWidth=1.5; ctx.beginPath();
+    for(let i=0;i<buf.length;i++){
+      const x=i*W/(N-1); const y=H-buf[i]*sc;
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  }
+  drawLine(bV,'#1D9E75');
+  drawLine(bA,'#378ADD');
+}
+
+function clock() {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString('ru-RU');
+}
+
+function toggleQuake() {
+  quake = !quake;
+  const hint = document.getElementById('clickHint');
+  const btn = document.getElementById('stopBtn');
+  if(quake) {
+    quakeT = 0;
+    hint.textContent = 'идут колебания...';
+    hint.className = 'active';
+    btn.className = 'show';
+    document.getElementById('alertBox').className = '';
+  } else {
+    hint.textContent = 'нажми куда угодно';
+    hint.className = '';
+    btn.className = '';
+    setStatus('ok');
+    setTimeout(()=>{ document.getElementById('alertBox').className=''; },3000);
+  }
+}
+
+document.getElementById('wrap').addEventListener('click', function(e) {
+  if(e.target.id === 'stopBtn') return;
+  toggleQuake();
+});
+
+setInterval(()=>{ tick(); draw(); }, 100);
+setInterval(clock, 1000);
+clock();
+draw();
+</script>
